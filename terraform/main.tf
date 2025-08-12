@@ -15,9 +15,9 @@ terraform {
 
 provider "aws" {
   region              = var.aws_region
-  profile             = "my0746"
   allowed_account_ids = ["074682456135"]
 }
+
 
 data "aws_caller_identity" "current" { }
 
