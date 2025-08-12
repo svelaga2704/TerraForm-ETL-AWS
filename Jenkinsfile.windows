@@ -1,0 +1,61 @@
+
+pipeline {
+  agent any
+  environment {
+    AWS_DEFAULT_REGION     = 'us-east-2'
+    REPO_URL               = 'https://github.com/svelaga2704/TerraForm-ETL-AWS.git'
+    BRANCH                 = 'main'
+    GITHUB_CREDENTIALS_ID  = ''
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        script {
+          if (env.GITHUB_CREDENTIALS_ID?.trim()) {
+            git credentialsId: env.GITHUB_CREDENTIALS_ID, branch: env.BRANCH, url: env.REPO_URL
+          } else {
+            git branch: env.BRANCH, url: env.REPO_URL
+          }
+        }
+      }
+    }
+    stage('Use AWS credentials') {
+      steps {
+        withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding',
+          credentialsId: 'aws-access-key-id',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+        ]]) {
+          powershell 'aws sts get-caller-identity | Write-Output'
+        }
+      }
+    }
+    stage('Terraform init/plan/apply') {
+      steps {
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          terraform -chdir=terraform init
+          terraform -chdir=terraform plan -out=tfplan
+          terraform -chdir=terraform apply -auto-approve tfplan
+        '''
+      }
+    }
+    stage('Run Glue Job') {
+      steps {
+        powershell '''
+          $ErrorActionPreference = "Stop"
+          $jobName = (& terraform -chdir=terraform output -raw glue_job_name)
+          Write-Host "Starting Glue job: $jobName"
+          $runId = (aws glue start-job-run --job-name $jobName | ConvertFrom-Json).JobRunId
+          do {
+            Start-Sleep -Seconds 20
+            $status = (aws glue get-job-run --job-name $jobName --run-id $runId | ConvertFrom-Json).JobRun.JobRunState
+            Write-Host "Status: $status"
+          } while ($status -notin @('SUCCEEDED','FAILED','ERROR','STOPPED'))
+          if ($status -ne 'SUCCEEDED') { throw "Glue job ended with status $status" }
+        '''
+      }
+    }
+  }
+  post { always { archiveArtifacts artifacts: '**/terraform.tfstate', allowEmptyArchive: true } }
+}

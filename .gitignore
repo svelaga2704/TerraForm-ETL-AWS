@@ -1,0 +1,23 @@
+﻿# Terraform
+.terraform/
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.backup
+
+# Keep the lock file (recommended to commit)
+# .terraform.lock.hcl  (do NOT ignore)
+
+# Python/Glue
+__pycache__/
+*.pyc
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
